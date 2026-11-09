@@ -1,0 +1,27 @@
+{
+  "chantiers": [
+    {
+      "id": "lauriers",
+      "nom": "Plantation de lauriers",
+      "taches": [
+        { "id": "L1", "nom": "Implantation du tracé et des écartements", "duree_jours": 0.5, "effectif": 2, "materiel": "Cordeau, piquets, mètre", "apres": [] },
+        { "id": "L2", "nom": "Tranchée, ameublissement du sol", "duree_jours": 1, "effectif": 1, "materiel": "Mini-pelle ou tarière, bêche", "apres": [] },
+        { "id": "L3", "nom": "Évacuation des déblais", "duree_jours": 0.5, "effectif": 1, "materiel": "Brouette, benne", "apres": [] },
+        { "id": "L4", "nom": "Amendement du fond de fouille", "duree_jours": 0.5, "effectif": 1, "materiel": "Terreau, compost, brouette", "apres": [] },
+        { "id": "L5", "nom": "Plantation et tuteurage", "duree_jours": 1.5, "effectif": 2, "materiel": "Bêche, sécateur, tuteurs", "apres": [] },
+        { "id": "L6", "nom": "Arrosage de plombage", "duree_jours": 0.2, "effectif": 1, "materiel": "Tuyau, arrosoir", "apres": [] },
+        { "id": "L7", "nom": "Paillage", "duree_jours": 0.5, "effectif": 1, "materiel": "Paillis, brouette", "apres": [] }
+      ]
+    },
+    {
+      "id": "taille-haies",
+      "nom": "Taille de haies",
+      "taches": [
+        { "id": "T1", "nom": "Taille de la haie", "duree_jours": 1.5, "effectif": 2, "materiel": "Taille-haie, échelle, EPI", "apres": [] },
+        { "id": "T2", "nom": "Taille de reprise et finitions", "duree_jours": 0.5, "effectif": 2, "materiel": "Sécateur, cordeau de niveau", "apres": [] },
+        { "id": "T3", "nom": "Ramassage des déchets verts et évacuation", "duree_jours": 1, "effectif": 2, "materiel": "Râteaux, bâches, remorque", "apres": [] },
+        { "id": "T4", "nom": "Nettoyage final des abords", "duree_jours": 0.5, "effectif": 2, "materiel": "Souffleur, balai", "apres": [] }
+      ]
+    }
+  ]
+}
