@@ -65,6 +65,10 @@ th{font-size:.85rem;color:var(--douce);border-top:0}
 td.j{font-weight:650;white-space:nowrap}tr.jour td{border-top:2px solid #9AA8A0}
 .hyp{margin-top:16px;border:1px solid var(--trait);border-left:4px solid var(--vert);border-radius:4px;padding:12px 16px;font-size:.92rem;color:var(--douce)}
 .hyp h3{margin:0 0 6px;font-size:1rem;color:var(--encre)}.hyp ul{margin:0;padding-left:20px}.hyp li{margin-bottom:4px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.actions button.sec{min-height:44px;padding:8px 16px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.perime{background:#FFF3CC;border-left:4px solid #B58900;color:#6B4E00}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -84,22 +88,25 @@ td.j{font-weight:650;white-space:nowrap}tr.jour td{border-top:2px solid #9AA8A0}
         <label>Téléphone<input type="tel"></label>
         <label>E-mail<input type="email"></label></fieldset>
       <fieldset><legend>Client</legend>
-        <label>Nom<input type="text"></label>
-        <label>Adresse du chantier<input type="text"></label>
+        <label>Nom<input type="text" id="c-nom"></label>
+        <label>Adresse du chantier<input type="text" id="c-adr"></label>
         <label>Téléphone ou e-mail<input type="text"></label></fieldset>
     </div></section>
   <section class="bloc"><h2>Dates</h2>
     <div class="grille">
       <label>Date de début<input type="date" id="d-debut"></label>
       <label>Date limite (facultative)<input type="date" id="d-limite"></label>
+      <label>Effectif disponible dans l’équipe<input type="number" min="1" step="1" inputmode="numeric" id="d-equipe"></label>
     </div>
     <div class="ajout"><label>Jour d’indisponibilité<input type="date" id="d-indispo"></label><button type="button" id="b-indispo">Ajouter</button></div>
     <ul class="dates" id="l-indispo"></ul></section>
   <section class="bloc" id="bloc-taches" hidden><h2 id="titre"></h2><ol id="liste"></ol>
     <p class="note">Le total additionne les durées des tâches cochées, sans tenir compte des tâches qui pourraient se faire en parallèle. La charge est la somme durée × effectif.</p></section>
   <section class="bloc" id="bloc-plan" hidden><h2>Planning</h2>
+    <div class="actions"><button type="button" id="b-recalc">Recalculer le planning</button><button type="button" class="sec" id="b-ics" disabled>Exporter le planning (.ics)</button></div>
+    <p class="note perime" id="p-perime" hidden>Les valeurs ont changé depuis le dernier calcul : cliquez sur « Recalculer le planning ».</p>
     <div id="p-msg"></div><p id="p-fin"></p>
-    <div class="defil"><table id="p-table" hidden><thead><tr><th>Date</th><th>Demi-journée</th><th>Tâche</th><th>Durée</th></tr></thead><tbody id="p-corps"></tbody></table></div>
+    <div class="defil"><table id="p-table" hidden><thead><tr><th>Date</th><th>Demi-journée</th><th>Tâche</th><th>Équipe</th><th>Durée</th></tr></thead><tbody id="p-corps"></tbody></table></div>
     <div class="hyp" id="p-hyp"></div></section>
 </div>
 </main>
@@ -208,13 +215,13 @@ function construire(){
     det.append(el("p",{text:"Matériel : "+(t.materiel||"non précisé")}));
     det.append(el("p",{text:"À terminer avant : "+(t.apres.length?t.apres.map(function(a){return a+" "+noms[a]}).join(", "):"aucune dépendance renseignée")}));
     L.dep=el("p",{class:"alerte"});det.append(L.dep);
-    L.pas=el("p",{class:"alerte",text:"Durée hors du pas de "+fmt(PAS)+" j."});det.append(L.pas);
+    L.pas=el("p",{class:"alerte",text:"Durée hors du pas de "+fmt(PAS)+" j."});det.append(L.pas);L.eq=el("p",{class:"alerte"});det.append(L.eq);
     if(t.commentaire)det.append(el("p",{text:"Commentaire : "+t.commentaire}));
     if(t.sous){var ul=el("ul",{class:"sous"});
       t.sous.forEach(function(s,k){var si=numIn(e.sous[k],function(v){e.sous[k]=v},"Durée en jours, "+s.nom);L.ins.push(si);
         ul.append(el("li",{},el("span",{text:s.nom}),si))});det.append(ul)}
     L.cb=cb;L.li=li;li.append(tete,champs,det);ol.append(li);lignes.push(L)});
-  $("#bloc-taches").hidden=false;$("#bloc-plan").hidden=false;$("#barre").hidden=false;maj()}
+  $("#bloc-taches").hidden=false;$("#bloc-plan").hidden=false;$("#barre").hidden=false;maj();planifier()}
 
 function maj(){
   var E=etat[cur.id],tot=0,ch=0,n=0;
@@ -224,11 +231,13 @@ function maj(){
     L.li.classList.toggle("off",!e.on);L.ins.forEach(function(i){i.disabled=!e.on});
     L.pas.hidden=!(L.t.sous?e.sous.some(horsPas):horsPas(d));
     var m=L.t.apres.filter(function(a){return !E[a].on});
+    var qe=lireEq();L.eq.hidden=!(e.on&&qe!==null&&e.eff>qe);
+    L.eq.textContent="Alerte : cette tâche demande "+e.eff+" personne"+(e.eff>1?"s":"")+", l’équipe disponible n’en compte que "+qe+".";
     L.dep.hidden=!(e.on&&m.length);
     L.dep.textContent="Attention : dépend de "+m.join(", ")+", non coché"+(m.length>1?"es":"e")+".";
     if(e.on){tot+=d;ch+=d*e.eff;n++}});
   $("#t-duree").textContent=fmt(tot);$("#t-charge").textContent=fmt(ch);
-  $("#t-nb").textContent=n+" / "+lignes.length;planifier()}
+  $("#t-nb").textContent=n+" / "+lignes.length;perime()}
 
 var indispo=[],cacheF={};
 var JOURS=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"],MOIS=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
@@ -250,12 +259,12 @@ function ordre(taches,E){var rest=taches.filter(function(t){return E[t.id].on}),
 function listeIndispo(){var ul=$("#l-indispo");ul.replaceChildren();
   if(!indispo.length){ul.append(el("li",{class:"vide",text:"Aucun jour d’indisponibilité."}));return}
   indispo.forEach(function(s){var b=el("button",{type:"button",class:"sec","aria-label":"Supprimer le "+long(dt(s)),text:"Supprimer"});
-    b.addEventListener("click",function(){indispo=indispo.filter(function(x){return x!==s});listeIndispo();planifier()});
+    b.addEventListener("click",function(){indispo=indispo.filter(function(x){return x!==s});listeIndispo();perime()});
     ul.append(el("li",{},el("span",{text:long(dt(s))}),b))})}
 function hyp(saut,durs){
   var h=$("#p-hyp"),ul=el("ul");h.replaceChildren(el("h3",{text:"Hypothèses de calcul"}),ul);
   ["Jours travaillés : du lundi au vendredi. Matin de 8 h à 12 h, après-midi de 14 h à 18 h. Une demi-journée vaut 0,5 j.",
-   "Une seule tâche à la fois, dans l’ordre du fichier, en respectant les dépendances : une tâche commence après la fin de toutes celles qu’elle doit suivre. Une dépendance vers une tâche décochée est ignorée. L’effectif n’influence pas le planning.",
+   "Deux tâches peuvent avoir lieu en même temps seulement si elles ne dépendent pas l’une de l’autre et si la somme de leurs effectifs ne dépasse pas l’effectif disponible (valeur saisie : "+(lireEq()||"non renseignée")+"). Chaque tâche est continue, placée au plus tôt dans l’ordre du fichier, et commence après la fin de toutes celles qu’elle doit suivre. Une dépendance vers une tâche décochée est ignorée.",
    "Le planning commence le matin du premier jour travaillé à partir de la date de début. La date limite est respectée si la dernière demi-journée tombe au plus tard ce jour-là.",
    "Jours fériés exclus, calculés pour chaque année concernée : jour de l’an, lundi de Pâques, 1er mai, 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er novembre, 11 novembre, 25 décembre. Les jours propres à l’Alsace-Moselle ne sont pas inclus.",
    "Les jours d’indisponibilité saisis sont exclus. Aucun aléa (météo, retard de livraison) n’est pris en compte."].forEach(function(t){ul.append(el("li",{text:t}))});
@@ -264,36 +273,84 @@ function hyp(saut,durs){
   var li=el("li",{text:"Durées utilisées (arrondies à la demi-journée supérieure) :"}),u2=el("ul");
   durs.forEach(function(d){u2.append(el("li",{text:d}))});
   if(!durs.length)u2.append(el("li",{text:"aucune tâche cochée."}));li.append(u2);ul.append(li)}
+var plan=null,enc=new TextEncoder();
+function lireEq(){var v=lire($("#d-equipe").value);return v}
+function perime(){if(cur){$("#p-perime").hidden=false;$("#b-ics").disabled=true}}
 function planifier(){
   if(!cur)return;
-  var E=etat[cur.id],msg=$("#p-msg"),fin=$("#p-fin"),tb=$("#p-corps"),rouge=function(t){msg.append(el("p",{class:"rouge",text:t}))};
+  var E=etat[cur.id].taches,msg=$("#p-msg"),fin=$("#p-fin"),tb=$("#p-corps"),rouge=function(t){msg.append(el("p",{class:"rouge",text:t}))},
+    note=function(t){msg.append(el("p",{class:"note",text:t}))};
   msg.replaceChildren();fin.textContent="";tb.replaceChildren();$("#p-table").hidden=true;
+  plan=null;$("#p-perime").hidden=true;$("#b-ics").disabled=true;
   var o=ordre(cur.taches,E);
   if(o.cycle){rouge("Planning impossible : dépendances circulaires entre les tâches "+o.cycle.map(function(t){return t.id}).join(", ")+".");hyp(null,[]);return}
-  var seq=[],durs=[];
-  o.liste.forEach(function(t){var e=E[t.id],d=t.sous?somme(e.sous):e.duree,n=Math.ceil(d/PAS-1e-9);
-    durs.push(t.id+" "+t.nom+" : "+fmt(d)+" j"+(horsPas(d)?", arrondie à "+fmt(n*PAS)+" j":"")+" ("+n+" demi-journée"+(n>1?"s":"")+")");
-    for(var k=1;k<=n;k++)seq.push({t:t,k:k,n:n})});
-  var debut=$("#d-debut").value,lim=$("#d-limite").value;
-  if(!debut){msg.append(el("p",{class:"note",text:"Renseignez une date de début pour calculer le planning."}));hyp(null,durs);return}
-  if(!seq.length){msg.append(el("p",{class:"note",text:"Aucune tâche cochée avec une durée : rien à planifier."}));hyp(null,durs);return}
-  var jour=dt(debut),pos=0,saut={},der=null,derP=0,retard=0;
-  for(var g=0;g<4000&&pos<seq.length;g++,jour=ajout(jour,1)){
+  var items=o.liste.map(function(t){var e=E[t.id],d=t.sous?somme(e.sous):e.duree;return{t:t,eff:e.eff,d:d,n:Math.ceil(d/PAS-1e-9)}});
+  var durs=items.map(function(x){return x.t.id+" "+x.t.nom+" : "+fmt(x.d)+" j"+(horsPas(x.d)?", arrondie à "+fmt(x.n*PAS)+" j":"")+", "+x.eff+" pers. ("+x.n+" demi-journée"+(x.n>1?"s":"")+")"});
+  var debut=$("#d-debut").value,lim=$("#d-limite").value,eq=lireEq();
+  if(!debut){note("Renseignez une date de début pour calculer le planning.");hyp(null,durs);return}
+  if(!eq){note("Renseignez l’effectif disponible dans l’équipe (au moins 1 personne) pour calculer le planning.");hyp(null,durs);return}
+  var trop=items.filter(function(x){return x.eff>eq});
+  if(trop.length){trop.forEach(function(x){rouge("Alerte : la tâche « "+x.t.id+" "+x.t.nom+" » demande "+x.eff+" personne"+(x.eff>1?"s":"")+", l’équipe disponible n’en compte que "+eq+".")});
+    rouge("Planning impossible tant que l’effectif disponible ou l’effectif de ces tâches n’est pas ajusté.");hyp(null,durs);return}
+  if(!items.some(function(x){return x.n>0})){note("Aucune tâche cochée avec une durée : rien à planifier.");hyp(null,durs);return}
+  var cal=[],saut={},jour=dt(debut);
+  for(var g=0;g<6000&&cal.length<8000;g++,jour=ajout(jour,1)){
     var dow=jour.getDay(),s=iso(jour),fer=feries(jour.getFullYear())[s];
     if(dow===0||dow===6)continue;
     if(fer||indispo.indexOf(s)>=0){saut[s]=fer||"jour d’indisponibilité";continue}
-    for(var p=0;p<2&&pos<seq.length;p++){
-      var q=seq[pos++];
-      tb.append(el("tr",{class:p===0?"jour":""},el("td",{class:"j",text:p===0?long(jour):""}),
-        el("td",{text:p===0?"Matin, 8 h à 12 h":"Après-midi, 14 h à 18 h"}),
-        el("td",{text:q.t.id+" "+q.t.nom+(q.n>1?" ("+q.k+"/"+q.n+")":"")}),el("td",{text:"0,5 j"})));
-      der=jour;derP=p;if(lim&&s>lim)retard++}}
-  if(pos<seq.length){rouge("Planning interrompu : plus de 4 000 jours sont nécessaires. Vérifiez les dates et les jours d’indisponibilité.");hyp(saut,durs);return}
+    cal.push({d:jour,s:s,p:0},{d:jour,s:s,p:1})}
+  var use=[],pl=[],fi={},ok=true;
+  items.forEach(function(x){
+    if(!ok)return;
+    var st=0,k;x.t.apres.forEach(function(a){if(fi[a]!==undefined&&fi[a]>st)st=fi[a]});
+    if(x.n>0){
+      for(;st+x.n<=cal.length;st++){var libre=true;for(k=0;k<x.n;k++)if((use[st+k]||0)+x.eff>eq){libre=false;break}if(libre)break}
+      if(st+x.n>cal.length){ok=false;return}
+      for(k=0;k<x.n;k++)use[st+k]=(use[st+k]||0)+x.eff}
+    fi[x.t.id]=st+x.n;pl.push({x:x,s:st})});
+  if(!ok){rouge("Planning interrompu : le calendrier dépasse 8 000 demi-journées. Vérifiez les dates et les jours d’indisponibilité.");hyp(null,durs);return}
+  var last=0,ev=[],retard=0,prev=null;
+  pl.forEach(function(q){if(q.x.n>0&&q.s+q.x.n>last)last=q.s+q.x.n});
+  for(var i=0;i<last;i++){
+    var act=pl.filter(function(q){return q.x.n>0&&q.s<=i&&i<q.s+q.x.n}),c=cal[i];
+    if(!act.length)continue;
+    if(lim&&c.s>lim)retard++;
+    act.forEach(function(q,idx){
+      var prem=idx===0&&c.s!==prev;
+      tb.append(el("tr",{class:prem?"jour":""},el("td",{class:"j",text:prem?long(c.d):""}),
+        el("td",{text:c.p===0?"Matin, 8 h à 12 h":"Après-midi, 14 h à 18 h"}),
+        el("td",{text:q.x.t.id+" "+q.x.t.nom+(q.x.n>1?" ("+(i-q.s+1)+"/"+q.x.n+")":"")}),
+        el("td",{text:q.x.eff+" pers."}),el("td",{text:"0,5 j"})));
+      ev.push({c:c,t:q.x.t,eff:q.x.eff})});
+    prev=c.s}
+  var fc=cal[last-1];
   $("#p-table").hidden=false;
-  fin.textContent="Fin prévue : "+long(der)+", "+(derP===0?"fin de matinée (12 h)":"fin d’après-midi (18 h)")+".";
-  if(lim&&retard>0)rouge("Le chantier ne peut pas se terminer avant la date limite du "+long(dt(lim))+" : fin prévue le "+long(der)+", soit "+retard+" demi-journée"+(retard>1?"s":"")+" après cette date.");
+  fin.textContent="Fin prévue : "+long(fc.d)+", "+(fc.p===0?"fin de matinée (12 h)":"fin d’après-midi (18 h)")+".";
+  if(lim&&retard>0)rouge("Le chantier ne peut pas se terminer avant la date limite du "+long(dt(lim))+" : fin prévue le "+long(fc.d)+", soit "+retard+" demi-journée"+(retard>1?"s":"")+" après cette date.");
   else if(lim)msg.append(el("p",{class:"ok",text:"La fin prévue respecte la date limite du "+long(dt(lim))+"."}));
+  Object.keys(saut).forEach(function(k){if(k>fc.s)delete saut[k]});
+  plan={ev:ev};$("#b-ics").disabled=false;
   hyp(saut,durs)}
+function plie(l){var out=[],cur="",oct=0;
+  for(var ch of l){var b=enc.encode(ch).length;if(oct+b>75){out.push(cur);cur=" ";oct=1}cur+=ch;oct+=b}
+  out.push(cur);return out.join("\r\n")}
+function exporter(){
+  if(!plan||!cur)return;
+  var cli=$("#c-nom").value.trim(),adr=$("#c-adr").value.trim(),n=0,
+    stamp=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,""),
+    esc=function(t){return String(t).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\r?\n/g,"\\n")},
+    L=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Chantier Planner//FR","CALSCALE:GREGORIAN"];
+  plan.ev.forEach(function(v){
+    var d=v.c.s.replace(/-/g,""),h=v.c.p===0?["080000","120000"]:["140000","180000"],
+      desc="Chantier : "+cur.nom+"\nClient : "+(cli||"non renseigné")+"\nEffectif : "+v.eff+" personne"+(v.eff>1?"s":"")+"\nMatériel : "+(v.t.materiel||"non précisé");
+    L.push("BEGIN:VEVENT","UID:"+Date.now()+"-"+(n++)+"@chantier-planner","DTSTAMP:"+stamp,"DTSTART:"+d+"T"+h[0],"DTEND:"+d+"T"+h[1],
+      "SUMMARY:"+esc(v.t.id+" "+v.t.nom+" ("+cur.nom+")"),"DESCRIPTION:"+esc(desc));
+    if(adr)L.push("LOCATION:"+esc(adr));
+    L.push("END:VEVENT")});
+  L.push("END:VCALENDAR");
+  var blob=new Blob([L.map(plie).join("\r\n")+"\r\n"],{type:"text/calendar;charset=utf-8"}),
+    a=el("a",{href:URL.createObjectURL(blob),download:"planning-"+cur.id.replace(/[^\w-]/g,"-")+".ics"});
+  document.body.append(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(a.href)},1000)}
 
 async function demarrer(){
   var rep,texte;
@@ -311,9 +368,11 @@ async function demarrer(){
     cur=chantiers.filter(function(c){return c.id===s.value})[0]||null;
     if(!cur){$("#bloc-taches").hidden=true;$("#bloc-plan").hidden=true;$("#barre").hidden=true;return}
     if(!etat[cur.id])etat[cur.id]=init(cur);construire()});
-  ["#d-debut","#d-limite"].forEach(function(id){$(id).addEventListener("input",planifier)});
+  ["#d-debut","#d-limite"].forEach(function(id){$(id).addEventListener("input",perime)});
+  $("#d-equipe").addEventListener("input",function(){if(cur)maj()});
+  $("#b-recalc").addEventListener("click",planifier);$("#b-ics").addEventListener("click",exporter);
   $("#b-indispo").addEventListener("click",function(){var v=$("#d-indispo").value;if(!v)return;
-    if(indispo.indexOf(v)<0){indispo.push(v);indispo.sort()}$("#d-indispo").value="";listeIndispo();planifier()});
+    if(indispo.indexOf(v)<0){indispo.push(v);indispo.sort()}$("#d-indispo").value="";listeIndispo();perime()});
   listeIndispo();
   $("#chargement").hidden=true;$("#app").hidden=false}
 demarrer();
