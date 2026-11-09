@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planificateur de chantiers paysagers</title>
+<style>
+:root{--fond:#F2F5F1;--surf:#fff;--encre:#1C2A23;--douce:#4F5E57;--trait:#D3DBD5;--vert:#2E6A49;--vertf:#1E4A33;--jaune:#F2C12E;--rouge:#B3261E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fond);color:var(--encre);font:16px/1.5 "Avenir Next","Segoe UI",system-ui,sans-serif;font-variant-numeric:tabular-nums}
+header{background:var(--vertf);color:#fff;padding:18px 16px}
+header h1{margin:0;font-size:1.4rem}
+header p{margin:2px 0 0;color:#cfe0d5;font-size:.95rem}
+main{max-width:960px;margin:0 auto;padding:16px}
+.bloc{background:var(--surf);border:1px solid var(--trait);border-radius:6px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:1.1rem}
+label{display:block;font-size:.9rem;color:var(--douce)}
+input,select{font:inherit;color:var(--encre);padding:8px 10px;border:1px solid #9AA8A0;border-radius:4px;background:#fff;width:100%}
+input:focus-visible,select:focus-visible{outline:3px solid var(--jaune);outline-offset:1px}
+input[aria-invalid=true]{border-color:var(--rouge);background:#FDECEA}
+.grille{display:grid;gap:12px}
+@media(min-width:720px){.grille{grid-template-columns:1fr 1fr}}
+fieldset{border:0;margin:0;padding:0;display:grid;gap:10px}
+legend{font-weight:650;margin-bottom:8px;padding:0}
+.msg{border-left:4px solid var(--rouge);background:#FDECEA;padding:12px 16px;margin-bottom:16px;border-radius:4px}
+.msg.warn{border-color:#B58900;background:#FFF3CC}
+.msg h2,.msg p,.msg ul{margin:0 0 6px}
+.msg ul{padding-left:20px}
+.msg code{background:rgba(0,0,0,.07);padding:1px 4px;border-radius:3px;word-break:break-all}
+ol{list-style:none;margin:0;padding:0}
+.tache{padding:14px 0;border-top:1px solid var(--trait);display:grid;gap:8px 16px}
+.tache:first-child{border-top:0}
+.tache.off{opacity:.55}
+@media(min-width:720px){.tache{grid-template-columns:minmax(0,1fr) auto;align-items:start}.det{grid-column:1/-1}}
+.coche{display:flex;gap:10px;align-items:center;min-height:44px;color:var(--encre);font-size:1rem;font-weight:600}
+.coche input{width:22px;height:22px;accent-color:var(--vert);flex:none}
+.id{font-weight:400;color:var(--douce);min-width:2.2em}
+.champs{display:flex;gap:12px;align-items:flex-end}
+.champs label{width:96px}
+.champs .calc{font-weight:700;font-size:1.1rem;padding:8px 0}
+.det{font-size:.9rem;color:var(--douce);display:grid;gap:2px}
+.det p{margin:0}
+.alerte{color:#8A4B00;font-weight:600}
+.sous{margin:4px 0 0;padding-left:16px;border-left:3px solid var(--trait);display:grid;gap:6px}
+.sous li{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.sous input{width:96px}
+.note{font-size:.85rem;color:var(--douce);margin:10px 0 0}
+.barre{position:sticky;bottom:0;background:var(--encre);color:#fff;padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:20px;justify-content:center;align-items:baseline;flex-wrap:wrap}
+.barre b{color:var(--jaune);font-size:1.9rem;line-height:1}
+.barre span{font-size:.9rem;color:#cfd8d3}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<header><h1>Planificateur de chantiers paysagers</h1><p>Choisissez un chantier, ajustez les tâches, lisez le total.</p></header>
+<main>
+<p id="chargement">Chargement des chantiers…</p>
+<section id="erreur" class="msg" role="alert" hidden></section>
+<section id="avert" class="msg warn" hidden></section>
+<div id="app" hidden>
+  <section class="bloc"><h2>Chantier</h2>
+    <label for="choix">Type de chantier</label><select id="choix"></select></section>
+  <section class="bloc"><h2>Entreprise et client</h2>
+    <div class="grille">
+      <fieldset><legend>Entreprise</legend>
+        <label>Nom<input type="text" autocomplete="organization"></label>
+        <label>Téléphone<input type="tel"></label>
+        <label>E-mail<input type="email"></label></fieldset>
+      <fieldset><legend>Client</legend>
+        <label>Nom<input type="text"></label>
+        <label>Adresse du chantier<input type="text"></label>
+        <label>Téléphone ou e-mail<input type="text"></label></fieldset>
+    </div></section>
+  <section class="bloc" id="bloc-taches" hidden><h2 id="titre"></h2><ol id="liste"></ol>
+    <p class="note">Le total additionne les durées des tâches cochées, sans tenir compte des tâches qui pourraient se faire en parallèle. La charge est la somme durée × effectif.</p></section>
+</div>
+</main>
+<div class="barre" id="barre" hidden>
+  <div><span>Total des durées</span> <b id="t-duree">0</b> <span>j</span></div>
+  <span>Charge : <strong id="t-charge">0</strong> j-personnes</span>
+  <span>Tâches : <strong id="t-nb">0</strong></span>
+</div>
+<script>
+(function(){
+"use strict";
+var FICHIER="chantiers.json",PAS=0.5;
+var $=function(s){return document.querySelector(s)};
+var fmt=function(n){return (Math.round(n*100)/100).toLocaleString("fr-FR",{maximumFractionDigits:2})};
+var horsPas=function(v){return Math.abs(v/PAS-Math.round(v/PAS))>1e-9};
+var somme=function(a){return Math.round(a.reduce(function(x,y){return x+y},0)*1e6)/1e6};
+var lire=function(s){var t=String(s).trim().replace(",",".");if(t==="")return null;var v=Number(t);return isFinite(v)&&v>=0?v:null};
+function el(tag,p){var n=document.createElement(tag);p=p||{};for(var k in p){var v=p[k];if(v==null)continue;
+  if(k==="class")n.className=v;else if(k==="text")n.textContent=v;
+  else if(k==="value"||k==="checked"||k==="disabled")n[k]=v;else n.setAttribute(k,v)}
+  for(var i=2;i<arguments.length;i++)if(arguments[i]!=null)n.append(arguments[i]);return n}
+
+function erreur(titre,lignes){
+  $("#chargement").hidden=true;$("#app").hidden=true;$("#barre").hidden=true;
+  var box=$("#erreur");box.replaceChildren(el("h2",{text:titre}));
+  var ul=el("ul");lignes.forEach(function(l){ul.append(el("li",{text:l}))});box.append(ul);box.hidden=false}
+
+function lireJSON(texte){
+  if(!texte.trim())return{err:["Le fichier est vide."]};
+  try{return{data:JSON.parse(texte)}}catch(e){
+    var msg=String(e.message),l=null,c=null,m=/line (\d+) column (\d+)/i.exec(msg);
+    if(m){l=+m[1];c=+m[2]}else if((m=/position (\d+)/i.exec(msg))){var av=texte.slice(0,+m[1]);l=av.split("\n").length;c=+m[1]-av.lastIndexOf("\n")}
+    var r=["Le fichier n’est pas un JSON valide."];
+    if(l)r.push("Erreur près de la ligne "+l+(c?", colonne "+c:"")+" : "+(texte.split("\n")[l-1]||"").trim());
+    r.push("Vérifiez les virgules, les guillemets et les accolades. Les décimales s’écrivent avec un point (0.5) et non une virgule (0,5).");
+    return{err:r}}}
+
+function ligneDe(texte,id,depuis){
+  var re=new RegExp('"id"\\s*:\\s*'+JSON.stringify(id).replace(/[.*+?^${}()|[\]\\]/g,"\\$&"));
+  var m=re.exec(texte.slice(depuis));if(!m)return null;
+  var pos=depuis+m.index;return{pos:pos,ligne:texte.slice(0,pos).split("\n").length}}
+
+function valider(texte,data){
+  var E=[],W=[],liste=Array.isArray(data)?data:(data&&Array.isArray(data.chantiers)?data.chantiers:null);
+  if(!liste||!liste.length){return{E:['Le fichier doit contenir une liste non vide de chantiers (champ "chantiers").'],W:W}}
+  var curs=0,idsC={},res=[];
+  var add=function(L,msg,loc){L.push(msg+(loc?" (ligne "+loc.ligne+")":""))};
+  liste.forEach(function(c,i){
+    var eC="Chantier n° "+(i+1);
+    if(!c||typeof c!=="object"){E.push(eC+" : ce n’est pas un objet.");return}
+    var locC=typeof c.id==="string"?ligneDe(texte,c.id,curs):null;if(locC)curs=locC.pos;
+    if(typeof c.id!=="string"||!c.id.trim())add(E,eC+" : champ « id » manquant ou vide.",locC);
+    else{if(idsC[c.id])add(E,eC+" : id « "+c.id+" » en double.",locC);idsC[c.id]=1;eC="Chantier « "+c.id+" »"}
+    if(typeof c.nom!=="string"||!c.nom.trim())add(E,eC+" : champ « nom » manquant.",locC);
+    if(!Array.isArray(c.taches)||!c.taches.length){add(E,eC+" : « taches » doit être une liste non vide.",locC);return}
+    var ids={},locs={},ch={id:c.id,nom:c.nom,taches:[]},tc=curs;
+    c.taches.forEach(function(t,j){
+      var eT=eC+", tâche n° "+(j+1);
+      if(!t||typeof t!=="object"){E.push(eT+" : ce n’est pas un objet.");return}
+      var ok=typeof t.id==="string"&&t.id.trim(),loc=ok?ligneDe(texte,t.id,tc):null;if(loc)tc=loc.pos;
+      if(!ok)add(E,eT+" : champ « id » manquant ou vide.",loc);
+      else{eT=eC+", tâche « "+t.id+" »";if(ids[t.id])add(E,eT+" : id en double.",loc);ids[t.id]=1;locs[t.id]=loc}
+      if(typeof t.nom!=="string"||!t.nom.trim())add(E,eT+" : champ « nom » manquant.",loc);
+      if(typeof t.effectif!=="number"||!isFinite(t.effectif)||t.effectif<0)add(E,eT+" : « effectif » doit être un nombre positif ou nul.",loc);
+      var mat=t.materiel;if(mat===undefined)mat="";
+      if(Array.isArray(mat))mat=mat.join(", ");
+      else if(typeof mat!=="string"){add(E,eT+" : « materiel » doit être un texte.",loc);mat=""}
+      if(t.apres!==undefined&&(!Array.isArray(t.apres)||t.apres.some(function(a){return typeof a!=="string"})))add(E,eT+" : « apres » doit être une liste d’id.",loc);
+      if(t.commentaire!==undefined&&typeof t.commentaire!=="string")add(E,eT+" : « commentaire » doit être un texte.",loc);
+      var T={id:t.id,nom:t.nom,effectif:t.effectif,materiel:mat,apres:Array.isArray(t.apres)?t.apres:[],commentaire:t.commentaire,duree:0,sous:null};
+      var pas=function(v,nom){if(horsPas(v))add(W,eT+" : "+nom+" de "+fmt(v)+" j n’est pas un multiple de "+fmt(PAS)+" j (valeur conservée).",loc)};
+      if(t.sous_taches!==undefined){
+        if(!Array.isArray(t.sous_taches)||!t.sous_taches.length)add(E,eT+" : « sous_taches » doit être une liste non vide.",loc);
+        else{T.sous=t.sous_taches.map(function(s,k){
+          if(!s||typeof s.nom!=="string"||typeof s.duree_jours!=="number"||!isFinite(s.duree_jours)||s.duree_jours<0){add(E,eT+", sous-tâche n° "+(k+1)+" : « nom » et « duree_jours » (nombre positif) sont requis.",loc);return{nom:"",duree:0}}
+          pas(s.duree_jours,"la sous-tâche « "+s.nom+" » ");return{nom:s.nom,duree:s.duree_jours}})}
+      }else if(typeof t.duree_jours!=="number"||!isFinite(t.duree_jours)||t.duree_jours<0)add(E,eT+" : « duree_jours » doit être un nombre positif ou nul.",loc);
+      else{T.duree=t.duree_jours;pas(t.duree_jours,"la durée ")}
+      ch.taches.push(T)});
+    ch.taches.forEach(function(T){T.apres.forEach(function(a){
+      if(a===T.id)add(E,eC+", tâche « "+T.id+" » : elle ne peut pas dépendre d’elle-même.",locs[T.id]);
+      else if(!ids[a])add(E,eC+", tâche « "+T.id+" » : « apres » cite l’id inconnu « "+a+" ».",locs[T.id])})});
+    res.push(ch)});
+  return{E:E,W:W,chantiers:res}}
+
+var chantiers=[],cur=null,etat={},lignes=[];
+function init(c){var o={};c.taches.forEach(function(t){o[t.id]={on:true,duree:t.duree,eff:t.effectif,sous:t.sous?t.sous.map(function(s){return s.duree}):null}});return o}
+
+function numIn(val,cb,label){
+  var i=el("input",{type:"number",min:"0",step:String(PAS),inputmode:"decimal",value:val,"aria-label":label});
+  i.addEventListener("input",function(){var v=lire(i.value);i.setAttribute("aria-invalid",v===null);cb(v===null?0:v);maj()});return i}
+
+function construire(){
+  var E=etat[cur.id],ol=$("#liste");ol.replaceChildren();lignes=[];$("#titre").textContent=cur.nom;
+  var noms={};cur.taches.forEach(function(t){noms[t.id]=t.nom});
+  cur.taches.forEach(function(t){
+    var e=E[t.id],L={t:t,ins:[],noms:noms},li=el("li",{class:"tache"});
+    var cb=el("input",{type:"checkbox",checked:true});
+    cb.addEventListener("change",function(){e.on=cb.checked;maj()});
+    var tete=el("label",{class:"coche"},cb,el("span",{class:"id",text:t.id}),el("span",{text:t.nom}));
+    var champs=el("div",{class:"champs"});
+    if(t.sous){L.aff=el("span",{class:"calc"});champs.append(el("div",{},el("label",{text:"Durée (j), somme"}),L.aff))}
+    else{var d=numIn(e.duree,function(v){e.duree=v},"Durée en jours, "+t.nom);L.ins.push(d);champs.append(el("label",{text:"Durée (j)"},d))}
+    var f=numIn(e.eff,function(v){e.eff=v},"Effectif, "+t.nom);L.ins.push(f);champs.append(el("label",{text:"Effectif"},f));
+    var det=el("div",{class:"det"});
+    det.append(el("p",{text:"Matériel : "+(t.materiel||"non précisé")}));
+    det.append(el("p",{text:"À terminer avant : "+(t.apres.length?t.apres.map(function(a){return a+" "+noms[a]}).join(", "):"aucune dépendance renseignée")}));
+    L.dep=el("p",{class:"alerte"});det.append(L.dep);
+    L.pas=el("p",{class:"alerte",text:"Durée hors du pas de "+fmt(PAS)+" j."});det.append(L.pas);
+    if(t.commentaire)det.append(el("p",{text:"Commentaire : "+t.commentaire}));
+    if(t.sous){var ul=el("ul",{class:"sous"});
+      t.sous.forEach(function(s,k){var si=numIn(e.sous[k],function(v){e.sous[k]=v},"Durée en jours, "+s.nom);L.ins.push(si);
+        ul.append(el("li",{},el("span",{text:s.nom}),si))});det.append(ul)}
+    L.cb=cb;L.li=li;li.append(tete,champs,det);ol.append(li);lignes.push(L)});
+  $("#bloc-taches").hidden=false;$("#barre").hidden=false;maj()}
+
+function maj(){
+  var E=etat[cur.id],tot=0,ch=0,n=0;
+  lignes.forEach(function(L){
+    var e=E[L.t.id],d=L.t.sous?somme(e.sous):e.duree;
+    if(L.aff)L.aff.textContent=fmt(d);
+    L.li.classList.toggle("off",!e.on);L.ins.forEach(function(i){i.disabled=!e.on});
+    L.pas.hidden=!(L.t.sous?e.sous.some(horsPas):horsPas(d));
+    var m=L.t.apres.filter(function(a){return !E[a].on});
+    L.dep.hidden=!(e.on&&m.length);
+    L.dep.textContent="Attention : dépend de "+m.join(", ")+", non coché"+(m.length>1?"es":"e")+".";
+    if(e.on){tot+=d;ch+=d*e.eff;n++}});
+  $("#t-duree").textContent=fmt(tot);$("#t-charge").textContent=fmt(ch);
+  $("#t-nb").textContent=n+" / "+lignes.length}
+
+async function demarrer(){
+  var rep,texte;
+  try{rep=await fetch(FICHIER,{cache:"no-store"})}catch(e){
+    return erreur("Impossible de charger « "+FICHIER+" »",[location.protocol==="file:"?"La page est ouverte directement depuis un dossier : le navigateur bloque la lecture du fichier. Publiez le site (GitHub Pages) ou lancez un petit serveur local.":"Vérifiez la connexion et que "+FICHIER+" est publié dans le même dossier que index.html."])}
+  if(!rep.ok)return erreur("Fichier « "+FICHIER+" » introuvable ou inaccessible",["Le serveur a répondu : "+rep.status+(rep.status===404?" (fichier absent). Placez "+FICHIER+" dans le même dossier que index.html, en respectant les majuscules et minuscules.":".")]);
+  try{texte=await rep.text()}catch(e){return erreur("Lecture impossible",["Le contenu de "+FICHIER+" n’a pas pu être lu."])}
+  var j=lireJSON(texte);if(j.err)return erreur("Erreur dans « "+FICHIER+" »",j.err);
+  var v=valider(texte,j.data);if(v.E.length)return erreur("Données invalides dans « "+FICHIER+" »",v.E);
+  chantiers=v.chantiers;
+  if(v.W.length){var b=$("#avert");b.replaceChildren(el("p",{text:"Avertissements sur les données :"}));var ul=el("ul");v.W.forEach(function(w){ul.append(el("li",{text:w}))});b.append(ul);b.hidden=false}
+  var s=$("#choix");s.append(el("option",{value:"",text:"Choisir un chantier"}));
+  chantiers.forEach(function(c){s.append(el("option",{value:c.id,text:c.nom}))});
+  s.addEventListener("change",function(){
+    cur=chantiers.filter(function(c){return c.id===s.value})[0]||null;
+    if(!cur){$("#bloc-taches").hidden=true;$("#barre").hidden=true;return}
+    if(!etat[cur.id])etat[cur.id]=init(cur);construire()});
+  $("#chargement").hidden=true;$("#app").hidden=false}
+demarrer();
+})();
+</script>
+<noscript>Cette application nécessite JavaScript.</noscript>
+</body>
+</html>
