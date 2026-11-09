@@ -48,6 +48,23 @@ ol{list-style:none;margin:0;padding:0}
 .barre{position:sticky;bottom:0;background:var(--encre);color:#fff;padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:20px;justify-content:center;align-items:baseline;flex-wrap:wrap}
 .barre b{color:var(--jaune);font-size:1.9rem;line-height:1}
 .barre span{font-size:.9rem;color:#cfd8d3}
+button{font:inherit;min-height:44px;padding:8px 16px;border:1px solid var(--vert);background:var(--vert);color:#fff;border-radius:4px;cursor:pointer}
+button.sec{background:#fff;color:var(--encre);border-color:#9AA8A0;min-height:36px;padding:4px 12px}
+button:focus-visible{outline:3px solid var(--jaune);outline-offset:1px}
+.ajout{display:flex;gap:10px;align-items:flex-end;margin-top:12px}.ajout label{flex:1}
+.dates{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px}
+.dates li{display:flex;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid var(--trait);padding-top:6px}
+.dates .vide{color:var(--douce);border:0}
+.rouge,.ok,.note{margin:0 0 10px;padding:10px 14px;border-radius:4px}
+.rouge{color:var(--rouge);font-weight:650;background:#FDECEA;border-left:4px solid var(--rouge)}
+.ok{color:#1E4A33;font-weight:650;background:#E4F1E8;border-left:4px solid var(--vert)}
+#p-fin{font-size:1.1rem;font-weight:650;margin:0 0 10px}
+.defil{overflow-x:auto}table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 10px;border-top:1px solid var(--trait);vertical-align:top}
+th{font-size:.85rem;color:var(--douce);border-top:0}
+td.j{font-weight:650;white-space:nowrap}tr.jour td{border-top:2px solid #9AA8A0}
+.hyp{margin-top:16px;border:1px solid var(--trait);border-left:4px solid var(--vert);border-radius:4px;padding:12px 16px;font-size:.92rem;color:var(--douce)}
+.hyp h3{margin:0 0 6px;font-size:1rem;color:var(--encre)}.hyp ul{margin:0;padding-left:20px}.hyp li{margin-bottom:4px}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -71,8 +88,19 @@ ol{list-style:none;margin:0;padding:0}
         <label>Adresse du chantier<input type="text"></label>
         <label>Téléphone ou e-mail<input type="text"></label></fieldset>
     </div></section>
+  <section class="bloc"><h2>Dates</h2>
+    <div class="grille">
+      <label>Date de début<input type="date" id="d-debut"></label>
+      <label>Date limite (facultative)<input type="date" id="d-limite"></label>
+    </div>
+    <div class="ajout"><label>Jour d’indisponibilité<input type="date" id="d-indispo"></label><button type="button" id="b-indispo">Ajouter</button></div>
+    <ul class="dates" id="l-indispo"></ul></section>
   <section class="bloc" id="bloc-taches" hidden><h2 id="titre"></h2><ol id="liste"></ol>
     <p class="note">Le total additionne les durées des tâches cochées, sans tenir compte des tâches qui pourraient se faire en parallèle. La charge est la somme durée × effectif.</p></section>
+  <section class="bloc" id="bloc-plan" hidden><h2>Planning</h2>
+    <div id="p-msg"></div><p id="p-fin"></p>
+    <div class="defil"><table id="p-table" hidden><thead><tr><th>Date</th><th>Demi-journée</th><th>Tâche</th><th>Durée</th></tr></thead><tbody id="p-corps"></tbody></table></div>
+    <div class="hyp" id="p-hyp"></div></section>
 </div>
 </main>
 <div class="barre" id="barre" hidden>
@@ -186,7 +214,7 @@ function construire(){
       t.sous.forEach(function(s,k){var si=numIn(e.sous[k],function(v){e.sous[k]=v},"Durée en jours, "+s.nom);L.ins.push(si);
         ul.append(el("li",{},el("span",{text:s.nom}),si))});det.append(ul)}
     L.cb=cb;L.li=li;li.append(tete,champs,det);ol.append(li);lignes.push(L)});
-  $("#bloc-taches").hidden=false;$("#barre").hidden=false;maj()}
+  $("#bloc-taches").hidden=false;$("#bloc-plan").hidden=false;$("#barre").hidden=false;maj()}
 
 function maj(){
   var E=etat[cur.id],tot=0,ch=0,n=0;
@@ -200,7 +228,72 @@ function maj(){
     L.dep.textContent="Attention : dépend de "+m.join(", ")+", non coché"+(m.length>1?"es":"e")+".";
     if(e.on){tot+=d;ch+=d*e.eff;n++}});
   $("#t-duree").textContent=fmt(tot);$("#t-charge").textContent=fmt(ch);
-  $("#t-nb").textContent=n+" / "+lignes.length}
+  $("#t-nb").textContent=n+" / "+lignes.length;planifier()}
+
+var indispo=[],cacheF={};
+var JOURS=["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"],MOIS=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+function dt(s){var p=s.split("-");return new Date(+p[0],+p[1]-1,+p[2],12)}
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function ajout(d,n){var r=new Date(d.getTime());r.setDate(r.getDate()+n);return r}
+function long(d){return JOURS[d.getDay()]+" "+d.getDate()+(d.getDate()===1?"er ":" ")+MOIS[d.getMonth()]+" "+d.getFullYear()}
+function paques(a){var A=a%19,b=Math.floor(a/100),c=a%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),
+  h=(19*A+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((A+11*h+22*l)/451),
+  n=h+l-7*m+114;return new Date(a,Math.floor(n/31)-1,n%31+1,12)}
+function feries(a){if(cacheF[a])return cacheF[a];var p=paques(a),o={};
+  [[0,1,"Jour de l’an"],[4,1,"Fête du travail"],[4,8,"Victoire 1945"],[6,14,"Fête nationale"],[7,15,"Assomption"],[10,1,"Toussaint"],[10,11,"Armistice 1918"],[11,25,"Noël"]].forEach(function(f){o[iso(new Date(a,f[0],f[1],12))]=f[2]});
+  [[1,"Lundi de Pâques"],[39,"Ascension"],[50,"Lundi de Pentecôte"]].forEach(function(f){o[iso(ajout(p,f[0]))]=f[1]});
+  return cacheF[a]=o}
+function ordre(taches,E){var rest=taches.filter(function(t){return E[t.id].on}),fait={},res=[];
+  while(rest.length){var i=rest.findIndex(function(t){return t.apres.every(function(a){return fait[a]||!E[a].on})});
+    if(i<0)return{cycle:rest};fait[rest[i].id]=1;res.push(rest.splice(i,1)[0])}
+  return{liste:res}}
+function listeIndispo(){var ul=$("#l-indispo");ul.replaceChildren();
+  if(!indispo.length){ul.append(el("li",{class:"vide",text:"Aucun jour d’indisponibilité."}));return}
+  indispo.forEach(function(s){var b=el("button",{type:"button",class:"sec","aria-label":"Supprimer le "+long(dt(s)),text:"Supprimer"});
+    b.addEventListener("click",function(){indispo=indispo.filter(function(x){return x!==s});listeIndispo();planifier()});
+    ul.append(el("li",{},el("span",{text:long(dt(s))}),b))})}
+function hyp(saut,durs){
+  var h=$("#p-hyp"),ul=el("ul");h.replaceChildren(el("h3",{text:"Hypothèses de calcul"}),ul);
+  ["Jours travaillés : du lundi au vendredi. Matin de 8 h à 12 h, après-midi de 14 h à 18 h. Une demi-journée vaut 0,5 j.",
+   "Une seule tâche à la fois, dans l’ordre du fichier, en respectant les dépendances : une tâche commence après la fin de toutes celles qu’elle doit suivre. Une dépendance vers une tâche décochée est ignorée. L’effectif n’influence pas le planning.",
+   "Le planning commence le matin du premier jour travaillé à partir de la date de début. La date limite est respectée si la dernière demi-journée tombe au plus tard ce jour-là.",
+   "Jours fériés exclus, calculés pour chaque année concernée : jour de l’an, lundi de Pâques, 1er mai, 8 mai, Ascension, lundi de Pentecôte, 14 juillet, 15 août, 1er novembre, 11 novembre, 25 décembre. Les jours propres à l’Alsace-Moselle ne sont pas inclus.",
+   "Les jours d’indisponibilité saisis sont exclus. Aucun aléa (météo, retard de livraison) n’est pris en compte."].forEach(function(t){ul.append(el("li",{text:t}))});
+  if(saut){var ks=Object.keys(saut).sort();
+    ul.append(el("li",{text:"Jours exclus sur la période du planning : "+(ks.length?ks.map(function(k){return long(dt(k))+" ("+saut[k]+")"}).join(" ; "):"aucun jour férié ni jour d’indisponibilité en semaine.")}))}
+  var li=el("li",{text:"Durées utilisées (arrondies à la demi-journée supérieure) :"}),u2=el("ul");
+  durs.forEach(function(d){u2.append(el("li",{text:d}))});
+  if(!durs.length)u2.append(el("li",{text:"aucune tâche cochée."}));li.append(u2);ul.append(li)}
+function planifier(){
+  if(!cur)return;
+  var E=etat[cur.id],msg=$("#p-msg"),fin=$("#p-fin"),tb=$("#p-corps"),rouge=function(t){msg.append(el("p",{class:"rouge",text:t}))};
+  msg.replaceChildren();fin.textContent="";tb.replaceChildren();$("#p-table").hidden=true;
+  var o=ordre(cur.taches,E);
+  if(o.cycle){rouge("Planning impossible : dépendances circulaires entre les tâches "+o.cycle.map(function(t){return t.id}).join(", ")+".");hyp(null,[]);return}
+  var seq=[],durs=[];
+  o.liste.forEach(function(t){var e=E[t.id],d=t.sous?somme(e.sous):e.duree,n=Math.ceil(d/PAS-1e-9);
+    durs.push(t.id+" "+t.nom+" : "+fmt(d)+" j"+(horsPas(d)?", arrondie à "+fmt(n*PAS)+" j":"")+" ("+n+" demi-journée"+(n>1?"s":"")+")");
+    for(var k=1;k<=n;k++)seq.push({t:t,k:k,n:n})});
+  var debut=$("#d-debut").value,lim=$("#d-limite").value;
+  if(!debut){msg.append(el("p",{class:"note",text:"Renseignez une date de début pour calculer le planning."}));hyp(null,durs);return}
+  if(!seq.length){msg.append(el("p",{class:"note",text:"Aucune tâche cochée avec une durée : rien à planifier."}));hyp(null,durs);return}
+  var jour=dt(debut),pos=0,saut={},der=null,derP=0,retard=0;
+  for(var g=0;g<4000&&pos<seq.length;g++,jour=ajout(jour,1)){
+    var dow=jour.getDay(),s=iso(jour),fer=feries(jour.getFullYear())[s];
+    if(dow===0||dow===6)continue;
+    if(fer||indispo.indexOf(s)>=0){saut[s]=fer||"jour d’indisponibilité";continue}
+    for(var p=0;p<2&&pos<seq.length;p++){
+      var q=seq[pos++];
+      tb.append(el("tr",{class:p===0?"jour":""},el("td",{class:"j",text:p===0?long(jour):""}),
+        el("td",{text:p===0?"Matin, 8 h à 12 h":"Après-midi, 14 h à 18 h"}),
+        el("td",{text:q.t.id+" "+q.t.nom+(q.n>1?" ("+q.k+"/"+q.n+")":"")}),el("td",{text:"0,5 j"})));
+      der=jour;derP=p;if(lim&&s>lim)retard++}}
+  if(pos<seq.length){rouge("Planning interrompu : plus de 4 000 jours sont nécessaires. Vérifiez les dates et les jours d’indisponibilité.");hyp(saut,durs);return}
+  $("#p-table").hidden=false;
+  fin.textContent="Fin prévue : "+long(der)+", "+(derP===0?"fin de matinée (12 h)":"fin d’après-midi (18 h)")+".";
+  if(lim&&retard>0)rouge("Le chantier ne peut pas se terminer avant la date limite du "+long(dt(lim))+" : fin prévue le "+long(der)+", soit "+retard+" demi-journée"+(retard>1?"s":"")+" après cette date.");
+  else if(lim)msg.append(el("p",{class:"ok",text:"La fin prévue respecte la date limite du "+long(dt(lim))+"."}));
+  hyp(saut,durs)}
 
 async function demarrer(){
   var rep,texte;
@@ -216,8 +309,12 @@ async function demarrer(){
   chantiers.forEach(function(c){s.append(el("option",{value:c.id,text:c.nom}))});
   s.addEventListener("change",function(){
     cur=chantiers.filter(function(c){return c.id===s.value})[0]||null;
-    if(!cur){$("#bloc-taches").hidden=true;$("#barre").hidden=true;return}
+    if(!cur){$("#bloc-taches").hidden=true;$("#bloc-plan").hidden=true;$("#barre").hidden=true;return}
     if(!etat[cur.id])etat[cur.id]=init(cur);construire()});
+  ["#d-debut","#d-limite"].forEach(function(id){$(id).addEventListener("input",planifier)});
+  $("#b-indispo").addEventListener("click",function(){var v=$("#d-indispo").value;if(!v)return;
+    if(indispo.indexOf(v)<0){indispo.push(v);indispo.sort()}$("#d-indispo").value="";listeIndispo();planifier()});
+  listeIndispo();
   $("#chargement").hidden=true;$("#app").hidden=false}
 demarrer();
 })();
